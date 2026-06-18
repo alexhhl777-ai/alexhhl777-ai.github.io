@@ -16,9 +16,9 @@
             position: fixed;
             top: 0; left: 0;
             width: 100vw; height: 100vh;
-            cursor: crosshair;
+            z-index: 1;
         }
-        canvas { display: block; }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
         .toolbar {
             position: fixed;
@@ -44,19 +44,138 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            position: relative;
         }
-        .tool-btn:hover { transform: translateY(-3px); }
-        .tool-btn.active { border-color: #fff; }
+        .tool-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .tool-btn:active {
+            transform: translateY(-1px) scale(0.95);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        }
+        .tool-btn.active {
+            border-color: #fff;
+            box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
         .tool-btn.black { background: #000; }
         .tool-btn.green { background: #22c55e; }
         .tool-btn.red { background: #ef4444; }
         .tool-btn.blue { background: #3b82f6; }
-        .tool-btn.eraser { background: #f0f0f0; color: #333; font-size: 20px; }
-        .tool-btn.clear-btn { background: #dc2626; color: #fff; font-size: 14px; padding: 0 10px; width: auto; }
+        .tool-btn.eraser {
+            background: #f0f0f0;
+            color: #333;
+            font-size: 20px;
+        }
+        .tool-btn.palette-btn {
+            background: #fff;
+            color: #333;
+            font-size: 18px;
+        }
+        .tool-btn.clear-btn {
+            background: #ef4444;
+            color: #fff;
+            font-size: 14px;
+            width: auto;
+            padding: 0 12px;
+            font-weight: 600;
+        }
+        .tool-btn.clear-all-btn {
+            background: #dc2626;
+            color: #fff;
+            font-size: 14px;
+            width: auto;
+            padding: 0 12px;
+            font-weight: 600;
+        }
 
-        .size-panel { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-        .size-label { color: rgba(255,255,255,0.6); font-size: 10px; }
-        .size-slider { width: 80px; cursor: pointer; }
+        .divider {
+            width: 1px;
+            height: 36px;
+            background: rgba(255,255,255,0.2);
+            margin: 0 4px;
+        }
+
+        .size-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .size-label {
+            color: rgba(255,255,255,0.6);
+            font-size: 10px;
+        }
+        .size-slider {
+            width: 80px;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+        .size-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        .zoom-controls {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+        .zoom-btn {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .zoom-btn:hover { transform: scale(1.1); }
+        .zoom-btn:active { transform: scale(0.9); }
+
+        .top-left-controls {
+            position: fixed;
+            top: 20px; left: 20px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+        }
+        .ctrl-btn {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-size: 20px;
+        }
+        .ctrl-btn:hover { transform: scale(1.1); }
+        .ctrl-btn:active { transform: scale(0.9); }
     </style>
 </head>
 <body>
@@ -65,14 +184,30 @@
         <canvas id="paintCanvas"></canvas>
     </div>
 
+    <div class="top-left-controls">
+        <button class="ctrl-btn" id="homeBtn">🏠</button>
+    </div>
+
+    <div class="zoom-controls">
+        <button class="zoom-btn" id="zoomIn">+</button>
+        <button class="zoom-btn" id="zoomOut">-</button>
+    </div>
+
     <div class="toolbar">
         <div class="tool-btn black active" data-color="#000000"></div>
         <div class="tool-btn green" data-color="#22c55e"></div>
         <div class="tool-btn red" data-color="#ef4444"></div>
         <div class="tool-btn blue" data-color="#3b82f6"></div>
+        <div class="tool-btn palette-btn" id="customColorBtn">🎨</div>
         <div class="tool-btn eraser" data-mode="erase">🧽</div>
-        <div class="tool-btn clear-btn" id="clearBtn">Очистить</div>
         
+        <div class="divider"></div>
+        
+        <div class="tool-btn clear-btn" id="clearMyBtn">Моё</div>
+        <div class="tool-btn clear-all-btn" id="clearAllBtn">Всё</div>
+        
+        <div class="divider"></div>
+
         <div class="size-panel">
             <span class="size-label">Размер</span>
             <input type="range" class="size-slider" id="sizeSlider" min="2" max="40" value="5">
@@ -83,10 +218,19 @@
         const canvas = document.getElementById('paintCanvas');
         const ctx = canvas.getContext('2d');
         const sizeSlider = document.getElementById('sizeSlider');
-        const clearBtn = document.getElementById('clearBtn');
         const buttons = document.querySelectorAll('.tool-btn[data-color], .tool-btn[data-mode]');
+        
+        let isDrawing = false;
+        let currentColor = '#000000';
+        let currentSize = 5;
+        let currentMode = 'draw';
+        const userId = 'user_' + Math.random().toString(36).substr(2, 9);
+        let currentStrokeId = null;
+        let currentPoints = [];
 
-        // Настройка размеров холста под экран
+        // Подключение к бэкенду на Render
+        const socket = new WebSocket('wss://://onrender.com');
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -96,135 +240,70 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        let isDrawing = false;
-        let currentColor = '#000000';
-        let currentSize = 5;
-        let currentMode = 'draw'; 
-        const userId = 'user_' + Math.random().toString(36).substr(2, 9);
-
-        // Генерация уникального ID для каждой линии
-        function generateId() { return Math.random().toString(36).substr(2, 9); }
-        let currentStrokeId = null;
-        let currentPoints = [];
-
-        // ПОДКЛЮЧЕНИЕ К ВАШЕМУ СЕРВЕРУ НА RENDER
-        const socket = new WebSocket('wss://://onrender.com');
-
         socket.onopen = () => {
-            console.log('Успешно подключено к серверу мультиплеера!');
             socket.send(JSON.stringify({ type: 'join', userId: userId }));
         };
 
         socket.onmessage = (event) => {
             const msg = JSON.parse(event.data);
-
             if (msg.type === 'init') {
-                // Рисуем старые линии при входе
-                msg.strokes.forEach(stroke => drawRemoteStroke(stroke));
-            }
-            else if (msg.type === 'draw') {
-                drawRemoteStroke(msg.stroke);
-            }
-            else if (msg.type === 'erase') {
-                // Просто перерисовываем холст, если кто-то что-то стер
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                // Для полноценного стирания здесь обычно запрашивают полный init заново, 
-                // но для простоты очистим или пропустим
-            }
-            else if (msg.type === 'clearAll') {
+                msg.strokes.forEach(s => drawStroke(s));
+            } else if (msg.type === 'draw') {
+                drawStroke(msg.stroke);
+            } else if (msg.type === 'clearAll') {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
             }
         };
 
-        // Логика рисования локального пользователя
-        canvas.addEventListener('mousedown', startDrawing);
-        canvas.addEventListener('mousemove', draw);
-        canvas.addEventListener('mouseup', stopDrawing);
-        canvas.addEventListener('mouseleave', stopDrawing);
+        canvas.addEventListener('mousedown', (e) => startDraw(e.clientX, e.clientY));
+        canvas.addEventListener('mousemove', (e) => moveDraw(e.clientX, e.clientY));
+        canvas.addEventListener('mouseup', endDraw);
+        canvas.addEventListener('mouseleave', endDraw);
 
-        // Поддержка мобильных устройств
-        canvas.addEventListener('touchstart', (e) => startDrawing(e.touches[0]));
-        canvas.addEventListener('touchmove', (e) => draw(e.touches[0]));
-        canvas.addEventListener('touchend', stopDrawing);
+        canvas.addEventListener('touchstart', (e) => {
+            const t = e.touches[0];
+            startDraw(t.clientX, t.clientY);
+        });
+        canvas.addEventListener('touchmove', (e) => {
+            const t = e.touches[0];
+            moveDraw(t.clientX, t.clientY);
+        });
+        canvas.addEventListener('touchend', endDraw);
 
-        function startDrawing(e) {
+        function startDraw(x, y) {
             isDrawing = true;
-            currentStrokeId = generateId();
-            currentPoints = [{ x: e.clientX, y: e.clientY }];
-            
+            currentStrokeId = Math.random().toString(36).substr(2, 9);
+            currentPoints = [{ x, y }];
             ctx.beginPath();
-            ctx.moveTo(e.clientX, e.clientY);
+            ctx.moveTo(x, y);
         }
 
-        function draw(e) {
+        function moveDraw(x, y) {
             if (!isDrawing) return;
-
-            const point = { x: e.clientX, y: e.clientY };
-            currentPoints.push(point);
+            currentPoints.push({ x, y });
 
             ctx.lineWidth = currentSize;
             ctx.strokeStyle = currentMode === 'erase' ? '#1a1a1a' : currentColor;
-            
-            ctx.lineTo(point.x, point.y);
+            ctx.lineTo(x, y);
             ctx.stroke();
 
-            // Каждую точку шлем на сервер
-            const strokeData = {
-                id: currentStrokeId,
-                userId: userId,
-                color: currentMode === 'erase' ? '#1a1a1a' : currentColor,
-                size: currentSize,
-                points: currentPoints
-            };
-
             if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'draw', stroke: strokeData }));
+                socket.send(JSON.stringify({
+                    type: 'draw',
+                    stroke: {
+                        id: currentStrokeId,
+                        userId: userId,
+                        color: currentMode === 'erase' ? '#1a1a1a' : currentColor,
+                        size: currentSize,
+                        points: currentPoints
+                    }
+                }));
             }
         }
 
-        function stopDrawing() {
-            isDrawing = false;
-        }
+        function endDraw() { isDrawing = false; }
 
-        // Отрисовка линий от других игроков
-        function drawRemoteStroke(stroke) {
+        function drawStroke(stroke) {
             if (!stroke || stroke.points.length < 2) return;
             ctx.beginPath();
-            ctx.lineWidth = stroke.size;
-            ctx.strokeStyle = stroke.color;
-            ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-            
-            for (let i = 1; i < stroke.points.length; i++) {
-                ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-            }
-            ctx.stroke();
-        }
-
-        // Переключение кнопок цветов и ластика
-        buttons.forEach(btn => {
-            btn.addEventListener('click', () => {
-                buttons.forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-
-                if (btn.dataset.color) {
-                    currentColor = btn.dataset.color;
-                    currentMode = 'draw';
-                } else if (btn.dataset.mode === 'erase') {
-                    currentMode = 'erase';
-                }
-            });
-        });
-
-        sizeSlider.addEventListener('input', (e) => {
-            currentSize = e.target.value;
-        });
-
-        clearBtn.addEventListener('click', () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify({ type: 'clearAll' }));
-            }
-        });
-    </script>
-</body>
-</html>
