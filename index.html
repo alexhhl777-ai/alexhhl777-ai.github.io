@@ -1,0 +1,1318 @@
+html_code = '''<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Бесконечная Арт-Доска</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            overflow: hidden;
+            background: #1a1a1a;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none;
+        }
+        #canvas-container {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            cursor: crosshair;
+        }
+        canvas { display: block; }
+
+        .toolbar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            padding: 12px 18px;
+            background: rgba(30, 30, 30, 0.9);
+            border-radius: 16px;
+            backdrop-filter: blur(12px);
+            z-index: 100;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            align-items: center;
+        }
+        .tool-btn {
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            border: 2px solid rgba(255,255,255,0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .tool-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .tool-btn:active {
+            transform: translateY(-1px) scale(0.95);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        }
+        .tool-btn.active {
+            border-color: #fff;
+            box-shadow: 0 0 15px rgba(255,255,255,0.3);
+        }
+        .tool-btn.black { background: #000; }
+        .tool-btn.green { background: #22c55e; }
+        .tool-btn.red { background: #ef4444; }
+        .tool-btn.blue { background: #3b82f6; }
+        .tool-btn.eraser {
+            background: #f0f0f0;
+            color: #333;
+            font-size: 20px;
+        }
+        .tool-btn.palette-btn {
+            background: #fff;
+            color: #333;
+            font-size: 18px;
+        }
+        .tool-btn.clear-btn {
+            background: #ef4444;
+            color: #fff;
+            font-size: 18px;
+        }
+        .tool-btn.clear-all-btn {
+            background: #dc2626;
+            color: #fff;
+            font-size: 18px;
+        }
+
+        .color-picker-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.6);
+            z-index: 300;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .color-picker-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+        .color-picker-panel {
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 20px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .color-wheel-container {
+            position: relative;
+            width: 260px; height: 260px;
+        }
+        #colorWheel {
+            width: 260px; height: 260px;
+            border-radius: 50%;
+            cursor: crosshair;
+            touch-action: none;
+        }
+        .color-wheel-cursor {
+            position: absolute;
+            width: 16px; height: 16px;
+            border: 3px solid #fff;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            z-index: 10;
+        }
+        .color-preview-box {
+            width: 60px; height: 60px;
+            border-radius: 12px;
+            border: 2px solid rgba(255,255,255,0.3);
+            transition: background 0.1s ease;
+        }
+        .color-picker-close {
+            padding: 10px 24px;
+            background: #fff;
+            color: #333;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .color-picker-close:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .color-picker-close:active {
+            transform: scale(0.95);
+        }
+        .color-picker-title {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .divider {
+            width: 1px;
+            height: 36px;
+            background: rgba(255,255,255,0.2);
+            margin: 0 4px;
+        }
+
+        .size-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+        .size-label {
+            color: rgba(255,255,255,0.6);
+            font-size: 10px;
+        }
+        .size-slider {
+            width: 80px;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+        .size-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .size-slider::-moz-range-thumb {
+            width: 16px; height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .size-preview {
+            width: 44px; height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .size-dot {
+            border-radius: 50%;
+            background: #fff;
+            transition: all 0.2s ease;
+        }
+
+        .zoom-controls {
+            position: fixed;
+            right: 20px;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 100;
+        }
+        .zoom-btn {
+            width: 40px; height: 40px;
+            border-radius: 50%;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 22px;
+            font-weight: bold;
+            color: #333;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .zoom-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .zoom-btn:active {
+            transform: scale(0.9);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+
+        .top-left-controls {
+            position: fixed;
+            top: 20px; left: 20px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+        }
+        .ctrl-btn {
+            width: 44px; height: 44px;
+            border-radius: 50%;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            font-size: 20px;
+        }
+        .ctrl-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        .ctrl-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .ctrl-btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .error-toast {
+            position: fixed;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-100px);
+            background: rgba(239, 68, 68, 0.95);
+            color: white;
+            padding: 14px 28px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 500;
+            z-index: 200;
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.4);
+            pointer-events: none;
+            white-space: nowrap;
+        }
+        .error-toast.show {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+        }
+
+        .marker {
+            position: absolute;
+            width: 36px; height: 48px;
+            pointer-events: none;
+            z-index: 50;
+            transform: translate(-50%, -100%);
+        }
+        .marker-body {
+            width: 36px; height: 36px;
+            background: #f59e0b;
+            border-radius: 50% 50% 50% 0;
+            transform: rotate(-45deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+        .marker-distance {
+            position: absolute;
+            bottom: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+        .marker-indicator {
+            position: fixed;
+            width: 40px; height: 40px;
+            pointer-events: none;
+            z-index: 50;
+            display: none;
+        }
+        .marker-indicator .arrow {
+            width: 0; height: 0;
+            border-left: 10px solid transparent;
+            border-right: 10px solid transparent;
+            border-bottom: 16px solid #f59e0b;
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .marker-indicator .dist {
+            position: absolute;
+            bottom: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: #fff;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .hint {
+            position: fixed;
+            bottom: 90px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+            z-index: 100;
+            pointer-events: none;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        .panning { cursor: grab !important; }
+        .panning:active { cursor: grabbing !important; }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.7);
+            z-index: 400;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.show {
+            display: flex;
+            opacity: 1;
+        }
+        .modal-box {
+            background: rgba(30, 30, 30, 0.95);
+            border-radius: 20px;
+            padding: 28px 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            max-width: 380px;
+            text-align: center;
+        }
+        .modal-title {
+            color: #fff;
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .modal-text {
+            color: rgba(255,255,255,0.7);
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        .modal-btn {
+            padding: 10px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .modal-btn.cancel {
+            background: rgba(255,255,255,0.15);
+            color: #fff;
+        }
+        .modal-btn.cancel:hover {
+            background: rgba(255,255,255,0.25);
+            transform: scale(1.05);
+        }
+        .modal-btn.confirm {
+            background: #ef4444;
+            color: #fff;
+        }
+        .modal-btn.confirm:hover {
+            background: #dc2626;
+            transform: scale(1.05);
+        }
+        .modal-btn.confirm-all {
+            background: #991b1b;
+            color: #fff;
+        }
+        .modal-btn.confirm-all:hover {
+            background: #7f1d1d;
+            transform: scale(1.05);
+        }
+        .modal-btn:active {
+            transform: scale(0.95);
+        }
+
+        .scroll-top-btn {
+            position: fixed;
+            bottom: 90px;
+            right: 20px;
+            width: 44px; height: 44px;
+            border-radius: 12px;
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 20px;
+            color: #333;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            z-index: 100;
+        }
+        .scroll-top-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+        }
+        .scroll-top-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="board"></canvas>
+    </div>
+
+    <div class="toolbar">
+        <div class="tool-btn palette-btn" id="paletteBtn" title="Выбрать цвет">&#x1F3A8;</div>
+        <div class="tool-btn black active" data-color="#000000" title="Чёрный маркер"></div>
+        <div class="tool-btn green" data-color="#22c55e" title="Зелёный маркер"></div>
+        <div class="tool-btn red" data-color="#ef4444" title="Красный маркер"></div>
+        <div class="tool-btn blue" data-color="#3b82f6" title="Синий маркер"></div>
+        <div class="tool-btn eraser" data-tool="eraser" title="Ластик">&#x1F9FC;</div>
+
+        <div class="divider"></div>
+
+        <div class="size-panel">
+            <div class="size-label">РАЗМЕР</div>
+            <input type="range" class="size-slider" id="sizeSlider" min="1" max="30" value="3" step="1">
+        </div>
+        <div class="size-preview">
+            <div class="size-dot" id="sizeDot" style="width:6px;height:6px;"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="tool-btn clear-btn" id="clearBtn" title="Удалить мои рисунки">&#x1F5D1;</div>
+        <div class="tool-btn clear-all-btn" id="clearAllBtn" title="Стереть у ВСЕХ">&#x2620;</div>
+    </div>
+
+    <div class="zoom-controls">
+        <button class="zoom-btn" id="zoomIn">+</button>
+        <button class="zoom-btn" id="zoomOut">&minus;</button>
+    </div>
+
+    <button class="scroll-top-btn" id="scrollTopBtn" title="Вернуться в центр">&#x2B06;</button>
+
+    <div class="top-left-controls">
+        <button class="ctrl-btn" id="undoBtn" title="Отменить">&#x21A9;</button>
+        <button class="ctrl-btn" id="gridBtn" title="Сетка">&#x25A2;</button>
+        <button class="ctrl-btn" id="teleportBtn" title="Телепорт к метке">&#x1F4CD;</button>
+        <button class="ctrl-btn" id="deleteMarkerBtn" title="Удалить метку">&#x1F5D1;</button>
+    </div>
+
+    <div class="error-toast" id="errorToast">
+        &#x26A0; Это чужой рисунок! Вы можете стирать только свои линии.
+    </div>
+
+    <div class="hint">
+        ЛКМ — рисовать | СКМ — перемещаться | ПКМ — поставить метку<br>
+        Колёсико — масштаб | Ластик — стирает точечно по размеру
+    </div>
+
+    <div class="color-picker-overlay" id="colorPickerOverlay">
+        <div class="color-picker-panel">
+            <div class="color-picker-title">Выберите цвет</div>
+            <div class="color-wheel-container">
+                <canvas id="colorWheel"></canvas>
+                <div class="color-wheel-cursor" id="colorCursor"></div>
+            </div>
+            <div class="color-preview-box" id="colorPreviewBox"></div>
+            <button class="color-picker-close" id="colorPickerClose">Готово</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="clearModal">
+        <div class="modal-box">
+            <div class="modal-title">&#x26A0; Удалить ваши рисунки?</div>
+            <div class="modal-text">Все ваши рисунки, метки и настройки будут безвозвратно удалены. Это действие нельзя отменить.</div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="modalCancel">Отмена</button>
+                <button class="modal-btn confirm" id="modalConfirm">Удалить мои</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="clearAllModal">
+        <div class="modal-box">
+            <div class="modal-title">&#x2620; СТЕРЕТЬ У ВСЕХ?</div>
+            <div class="modal-text">ВСЕ рисунки ВСЕХ пользователей будут безвозвратно удалены с доски. Это действие нельзя отменить!</div>
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" id="modalCancelAll">Отмена</button>
+                <button class="modal-btn confirm-all" id="modalConfirmAll">СТЕРЕТЬ У ВСЕХ</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('board');
+        const ctx = canvas.getContext('2d');
+        const container = document.getElementById('canvas-container');
+        const WORLD_SIZE = 100000;
+
+        let camera = {
+            x: WORLD_SIZE / 2,
+            y: WORLD_SIZE / 2,
+            zoom: 1,
+            minZoom: 0.1,
+            maxZoom: 5
+        };
+
+        let myUserId = localStorage.getItem('artBoard_userId');
+        if (!myUserId) {
+            myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('artBoard_userId', myUserId);
+        }
+
+        let currentTool = 'pen';
+        let currentColor = '#000000';
+        let penSize = 3;
+        let eraserSize = 15;
+
+        let isDrawing = false;
+        let isPanning = false;
+        let lastX = 0, lastY = 0;
+        let panStartX = 0, panStartY = 0;
+        let cameraStartX = 0, cameraStartY = 0;
+
+        let strokes = [];
+        let currentStroke = null;
+        let marker = null;
+        let undoStack = [];
+        let gridEnabled = true;
+
+        function saveToStorage() {
+            try {
+                const myStrokes = strokes.filter(function(s) { return s.userId === myUserId; });
+                const data = {
+                    strokes: myStrokes,
+                    marker: marker,
+                    camera: {x: camera.x, y: camera.y, zoom: camera.zoom},
+                    penSize: penSize,
+                    eraserSize: eraserSize,
+                    currentColor: currentColor
+                };
+                localStorage.setItem('artBoard_' + myUserId, JSON.stringify(data));
+            } catch(e) {}
+        }
+
+        function loadFromStorage() {
+            try {
+                const saved = localStorage.getItem('artBoard_' + myUserId);
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    if (data.strokes) {
+                        data.strokes.forEach(function(s) {
+                            strokes.push(s);
+                        });
+                    }
+                    if (data.marker) marker = data.marker;
+                    if (data.camera) {
+                        camera.x = data.camera.x;
+                        camera.y = data.camera.y;
+                        camera.zoom = data.camera.zoom;
+                    }
+                    if (data.penSize) penSize = data.penSize;
+                    if (data.eraserSize) eraserSize = data.eraserSize;
+                    if (data.currentColor) currentColor = data.currentColor;
+                    return true;
+                }
+            } catch(e) {}
+            return false;
+        }
+
+        function loadOtherUsersArt() {
+            try {
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith('artBoard_') && key !== 'artBoard_' + myUserId && key !== 'artBoard_userId') {
+                        const data = JSON.parse(localStorage.getItem(key));
+                        if (data && data.strokes) {
+                            data.strokes.forEach(function(s) {
+                                const exists = strokes.some(function(ex) { return ex.id === s.id; });
+                                if (!exists) strokes.push(s);
+                            });
+                        }
+                    }
+                }
+            } catch(e) {}
+        }
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            render();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        loadFromStorage();
+        loadOtherUsersArt();
+
+        function screenToWorld(sx, sy) {
+            return {
+                x: camera.x + (sx - canvas.width/2) / camera.zoom,
+                y: camera.y + (sy - canvas.height/2) / camera.zoom
+            };
+        }
+
+        function worldToScreen(wx, wy) {
+            return {
+                x: canvas.width/2 + (wx - camera.x) * camera.zoom,
+                y: canvas.height/2 + (wy - camera.y) * camera.zoom
+            };
+        }
+
+        function render() {
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            if (gridEnabled) drawGrid();
+
+            strokes.forEach(stroke => {
+                if (stroke.points.length < 2) return;
+                ctx.beginPath();
+                ctx.strokeStyle = stroke.color;
+                ctx.lineWidth = stroke.size * camera.zoom;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                const start = worldToScreen(stroke.points[0].x, stroke.points[0].y);
+                ctx.moveTo(start.x, start.y);
+                for (let i = 1; i < stroke.points.length; i++) {
+                    const p = worldToScreen(stroke.points[i].x, stroke.points[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            });
+
+            if (currentStroke && currentStroke.points.length > 1) {
+                ctx.beginPath();
+                ctx.strokeStyle = currentStroke.color;
+                ctx.lineWidth = currentStroke.size * camera.zoom;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                const start = worldToScreen(currentStroke.points[0].x, currentStroke.points[0].y);
+                ctx.moveTo(start.x, start.y);
+                for (let i = 1; i < currentStroke.points.length; i++) {
+                    const p = worldToScreen(currentStroke.points[i].x, currentStroke.points[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            }
+
+            updateMarker();
+        }
+
+        function drawGrid() {
+            const gridSize = 50 * camera.zoom;
+            const offsetX = (canvas.width/2 - camera.x * camera.zoom) % gridSize;
+            const offsetY = (canvas.height/2 - camera.y * camera.zoom) % gridSize;
+            ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+            ctx.lineWidth = 1;
+            for (let x = offsetX; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = offsetY; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        function updateMarker() {
+            document.querySelectorAll('.marker, .marker-indicator').forEach(el => el.remove());
+            if (!marker) return;
+
+            const screen = worldToScreen(marker.worldX, marker.worldY);
+            const dist = Math.sqrt(
+                Math.pow(marker.worldX - camera.x, 2) +
+                Math.pow(marker.worldY - camera.y, 2)
+            );
+            let distText;
+            if (dist < 1000) {
+                distText = Math.round(dist) + 'm';
+            } else {
+                distText = (dist / 1000).toFixed(1) + 'km';
+            }
+
+            if (screen.x > -50 && screen.x < canvas.width + 50 &&
+                screen.y > -50 && screen.y < canvas.height + 50) {
+                const el = document.createElement('div');
+                el.className = 'marker';
+                el.style.left = screen.x + 'px';
+                el.style.top = screen.y + 'px';
+                el.innerHTML = '<div class="marker-body"></div><div class="marker-distance">' + distText + '</div>';
+                container.appendChild(el);
+            } else {
+                const indicator = document.createElement('div');
+                indicator.className = 'marker-indicator';
+                const angle = Math.atan2(marker.worldY - camera.y, marker.worldX - camera.x);
+                const margin = 30;
+                let ix, iy;
+                const tan = Math.tan(angle);
+                const hw = canvas.width / 2 - margin;
+                const hh = canvas.height / 2 - margin;
+                if (Math.abs(tan) < hh / hw) {
+                    ix = (angle > 0 && angle < Math.PI) ? canvas.width - margin : margin;
+                    iy = canvas.height / 2 + (ix - canvas.width / 2) * tan;
+                } else {
+                    iy = (angle > Math.PI / 2 && angle < 3 * Math.PI / 2) ? canvas.height - margin : margin;
+                    ix = canvas.width / 2 + (iy - canvas.height / 2) / tan;
+                }
+                ix = Math.max(margin, Math.min(canvas.width - margin, ix));
+                iy = Math.max(margin, Math.min(canvas.height - margin, iy));
+                indicator.style.left = (ix - 20) + 'px';
+                indicator.style.top = (iy - 20) + 'px';
+                indicator.style.display = 'block';
+                const arrowAngle = angle * 180 / Math.PI - 90;
+                indicator.innerHTML = '<div class="arrow" style="transform: translate(-50%, -50%) rotate(' + arrowAngle + 'deg);"></div><div class="dist">' + distText + '</div>';
+                container.appendChild(indicator);
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function distanceToStroke(px, py, stroke) {
+            let minDist = Infinity;
+            for (let i = 0; i < stroke.points.length - 1; i++) {
+                const p1 = worldToScreen(stroke.points[i].x, stroke.points[i].y);
+                const p2 = worldToScreen(stroke.points[i+1].x, stroke.points[i+1].y);
+                const dist = pointToSegment(px, py, p1.x, p1.y, p2.x, p2.y);
+                if (dist < minDist) minDist = dist;
+            }
+            return minDist;
+        }
+
+        function pointToSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const len2 = dx * dx + dy * dy;
+            if (len2 === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+            let t = ((px - x1) * dx + (py - y1) * dy) / len2;
+            t = Math.max(0, Math.min(1, t));
+            const projX = x1 + t * dx;
+            const projY = y1 + t * dy;
+            return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+        }
+
+        function findStrokeAt(x, y, radius) {
+            radius = radius || 15;
+            for (let i = strokes.length - 1; i >= 0; i--) {
+                if (distanceToStroke(x, y, strokes[i]) < radius) {
+                    return strokes[i];
+                }
+            }
+            return null;
+        }
+
+        // ======== СОБЫТИЯ МЫШИ ========
+        canvas.addEventListener('mousedown', function(e) {
+            const pos = getMousePos(e);
+            if (e.button === 1) {
+                e.preventDefault();
+                isPanning = true;
+                panStartX = pos.x;
+                panStartY = pos.y;
+                cameraStartX = camera.x;
+                cameraStartY = camera.y;
+                container.classList.add('panning');
+                return;
+            }
+            if (e.button === 2) {
+                e.preventDefault();
+                const world = screenToWorld(pos.x, pos.y);
+                if (marker) {
+                    undoStack.push({type: 'moveMarker', oldMarker: marker});
+                }
+                marker = {
+                    id: 'marker_' + Date.now(),
+                    x: pos.x, y: pos.y,
+                    worldX: world.x, worldY: world.y
+                };
+                undoStack.push({type: 'marker', data: marker});
+                saveToStorage();
+                render();
+                return;
+            }
+            if (e.button === 0) {
+                if (currentTool === 'eraser') {
+                    eraseAt(pos.x, pos.y);
+                    return;
+                }
+                const world = screenToWorld(pos.x, pos.y);
+                currentStroke = {
+                    id: 'stroke_' + Date.now() + '_' + Math.random(),
+                    userId: myUserId,
+                    points: [{x: world.x, y: world.y}],
+                    color: currentColor,
+                    size: penSize,
+                    timestamp: Date.now()
+                };
+                isDrawing = true;
+                lastX = pos.x;
+                lastY = pos.y;
+            }
+        });
+
+        canvas.addEventListener('mousemove', function(e) {
+            const pos = getMousePos(e);
+            if (isDrawing && currentStroke) {
+                const world = screenToWorld(pos.x, pos.y);
+                currentStroke.points.push({x: world.x, y: world.y});
+                render();
+            } else if (isPanning) {
+                const dx = (pos.x - panStartX) / camera.zoom;
+                const dy = (pos.y - panStartY) / camera.zoom;
+                camera.x = cameraStartX - dx;
+                camera.y = cameraStartY - dy;
+                render();
+            } else if (currentTool === 'eraser' && e.buttons === 1) {
+                eraseAt(pos.x, pos.y);
+            }
+        });
+
+        canvas.addEventListener('mouseup', function(e) {
+            if (isDrawing && currentStroke) {
+                if (currentStroke.points.length > 1) {
+                    strokes.push(currentStroke);
+                    undoStack.push({type: 'draw', data: currentStroke});
+                    saveToStorage();
+                }
+                currentStroke = null;
+                isDrawing = false;
+                render();
+            }
+            if (isPanning) {
+                isPanning = false;
+                container.classList.remove('panning');
+                saveToStorage();
+            }
+        });
+
+        canvas.addEventListener('mouseleave', function() {
+            if (isDrawing && currentStroke) {
+                if (currentStroke.points.length > 1) {
+                    strokes.push(currentStroke);
+                    undoStack.push({type: 'draw', data: currentStroke});
+                    saveToStorage();
+                }
+                currentStroke = null;
+                isDrawing = false;
+                render();
+            }
+            isPanning = false;
+            container.classList.remove('panning');
+        });
+
+        window.addEventListener('wheel', function(e) {
+            if (e.target === canvas || e.target === container) {
+                e.preventDefault();
+            }
+        }, {passive: false});
+
+        canvas.addEventListener('wheel', function(e) {
+            e.preventDefault();
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newZoom = Math.max(camera.minZoom, Math.min(camera.maxZoom, camera.zoom * zoomFactor));
+            if (newZoom !== camera.zoom) {
+                const pos = getMousePos(e);
+                const worldBefore = screenToWorld(pos.x, pos.y);
+                camera.zoom = newZoom;
+                const worldAfter = screenToWorld(pos.x, pos.y);
+                camera.x += worldBefore.x - worldAfter.x;
+                camera.y += worldBefore.y - worldAfter.y;
+                render();
+            }
+        }, {passive: false});
+
+        canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+        // ======== ЛАСТИК — ИСПРАВЛЕННЫЙ ========
+        function eraseAt(sx, sy) {
+            const radius = eraserSize * camera.zoom; // масштабируем радиус под зум
+            let hitForeign = false;
+            let changed = false;
+            const newStrokes = [];
+            const removedStrokes = [];
+
+            for (let s = 0; s < strokes.length; s++) {
+                const stroke = strokes[s];
+
+                // Чужие линии — просто проверяем попадание, но не трогаем
+                if (stroke.userId !== myUserId) {
+                    const dist = distanceToStroke(sx, sy, stroke);
+                    if (dist < radius) {
+                        hitForeign = true;
+                    }
+                    newStrokes.push(stroke);
+                    continue;
+                }
+
+                // Мои линии — стираем точки в радиусе
+                let segments = [];
+                let currentSeg = [];
+                let wasErased = false;
+
+                for (let i = 0; i < stroke.points.length; i++) {
+                    const p = worldToScreen(stroke.points[i].x, stroke.points[i].y);
+                    const dist = Math.sqrt((sx - p.x) ** 2 + (sy - p.y) ** 2);
+                    if (dist > radius) {
+                        currentSeg.push(stroke.points[i]);
+                    } else {
+                        // Точка в зоне ластика — разрываем
+                        if (currentSeg.length > 1) {
+                            segments.push(currentSeg);
+                        } else if (currentSeg.length === 1) {
+                            // Одиночная точка — теряем
+                        }
+                        currentSeg = [];
+                        wasErased = true;
+                    }
+                }
+                // Добавляем последний сегмент
+                if (currentSeg.length > 1) {
+                    segments.push(currentSeg);
+                }
+
+                if (wasErased) {
+                    changed = true;
+                    removedStrokes.push(stroke);
+                    // Создаём новые stroke из каждого сегмента
+                    segments.forEach(function(seg) {
+                        if (seg.length >= 2) {
+                            newStrokes.push({
+                                id: 'stroke_' + Date.now() + '_' + Math.random(),
+                                userId: myUserId,
+                                points: seg,
+                                color: stroke.color,
+                                size: stroke.size,
+                                timestamp: Date.now()
+                            });
+                        }
+                    });
+                } else {
+                    // Ничего не стёрли — оставляем как есть
+                    newStrokes.push(stroke);
+                }
+            }
+
+            // Если были изменения — обновляем массив и сохраняем
+            if (changed) {
+                strokes = newStrokes;
+                // Добавляем в undo удалённые оригиналы
+                removedStrokes.forEach(function(rs) {
+                    undoStack.push({type: 'erase', data: rs});
+                });
+                saveToStorage();
+                render();
+            }
+
+            // Если попали в чужое, но ничего своего не стёрли — показываем ошибку
+            if (hitForeign && !changed) {
+                showError();
+            }
+        }
+
+        // ======== ИНСТРУМЕНТЫ ========
+        document.querySelectorAll('.tool-btn[data-color]').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.tool-btn').forEach(function(b) { b.classList.remove('active'); });
+                btn.classList.add('active');
+                currentTool = 'pen';
+                currentColor = btn.dataset.color;
+                updateSizePreview();
+                saveToStorage();
+            });
+        });
+
+        document.querySelector('.tool-btn.eraser').addEventListener('click', function() {
+            document.querySelectorAll('.tool-btn').forEach(function(b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            currentTool = 'eraser';
+            updateSizePreview();
+        });
+
+        // ======== ЦВЕТОВАЯ ПАЛИТРА ========
+        const colorWheel = document.getElementById('colorWheel');
+        const colorWheelCtx = colorWheel.getContext('2d');
+        const colorCursor = document.getElementById('colorCursor');
+        const colorPreviewBox = document.getElementById('colorPreviewBox');
+        const colorPickerOverlay = document.getElementById('colorPickerOverlay');
+        const paletteBtn = document.getElementById('paletteBtn');
+        const colorPickerClose = document.getElementById('colorPickerClose');
+        let isPickingColor = false;
+        let pickedColor = '#000000';
+
+        function drawColorWheel() {
+            const w = 260, h = 260;
+            colorWheel.width = w;
+            colorWheel.height = h;
+            const cx = w/2, cy = h/2, r = w/2 - 4;
+
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const dx = x - cx;
+                    const dy = y - cy;
+                    const dist = Math.sqrt(dx*dx + dy*dy);
+                    if (dist > r) continue;
+                    const angle = Math.atan2(dy, dx);
+                    const hue = (angle * 180 / Math.PI + 360) % 360;
+                    const sat = dist / r * 100;
+                    const light = 50;
+                    colorWheelCtx.fillStyle = 'hsl(' + hue + ', ' + sat + '%, ' + light + '%)';
+                    colorWheelCtx.fillRect(x, y, 1, 1);
+                }
+            }
+            const grad = colorWheelCtx.createRadialGradient(cx, cy, 0, cx, cy, r * 0.3);
+            grad.addColorStop(0, 'white');
+            grad.addColorStop(1, 'transparent');
+            colorWheelCtx.fillStyle = grad;
+            colorWheelCtx.fillRect(0, 0, w, h);
+        }
+        drawColorWheel();
+
+        function pickColorFromWheel(e) {
+            const rect = colorWheel.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const cx = 130, cy = 130, r = 126;
+            const dx = x - cx;
+            const dy = y - cy;
+            const dist = Math.sqrt(dx*dx + dy*dy);
+            if (dist > r) return;
+
+            const angle = Math.atan2(dy, dx);
+            const hue = (angle * 180 / Math.PI + 360) % 360;
+            const sat = Math.min(100, dist / r * 100);
+            const light = 50;
+            pickedColor = 'hsl(' + Math.round(hue) + ', ' + Math.round(sat) + '%, ' + light + '%)';
+
+            colorCursor.style.left = x + 'px';
+            colorCursor.style.top = y + 'px';
+            colorPreviewBox.style.background = pickedColor;
+        }
+
+        paletteBtn.addEventListener('click', function() {
+            colorPickerOverlay.classList.add('show');
+            colorPreviewBox.style.background = currentColor;
+        });
+
+        colorPickerClose.addEventListener('click', function() {
+            colorPickerOverlay.classList.remove('show');
+            currentColor = pickedColor;
+            document.querySelectorAll('.tool-btn').forEach(function(b) { b.classList.remove('active'); });
+            document.querySelector('.tool-btn.palette-btn').classList.add('active');
+            currentTool = 'pen';
+            saveToStorage();
+        });
+
+        colorWheel.addEventListener('mousedown', function(e) {
+            isPickingColor = true;
+            pickColorFromWheel(e);
+        });
+        window.addEventListener('mousemove', function(e) {
+            if (isPickingColor) pickColorFromWheel(e);
+        });
+        window.addEventListener('mouseup', function() {
+            isPickingColor = false;
+        });
+
+        // ======== РАЗМЕР ========
+        const sizeSlider = document.getElementById('sizeSlider');
+        const sizeDot = document.getElementById('sizeDot');
+        sizeSlider.addEventListener('input', function() {
+            const val = parseInt(sizeSlider.value);
+            if (currentTool === 'eraser') {
+                eraserSize = val;
+            } else {
+                penSize = val;
+            }
+            updateSizePreview();
+            saveToStorage();
+        });
+        function updateSizePreview() {
+            const val = currentTool === 'eraser' ? eraserSize : penSize;
+            sizeSlider.value = val;
+            const px = Math.max(4, Math.min(36, val * 1.2));
+            sizeDot.style.width = px + 'px';
+            sizeDot.style.height = px + 'px';
+            sizeDot.style.borderRadius = currentTool === 'eraser' ? '2px' : '50%';
+            sizeDot.style.background = currentTool === 'eraser' ? '#ff6b6b' : currentColor;
+        }
+
+        // ======== МАСШТАБИРОВАНИЕ ========
+        document.getElementById('zoomIn').addEventListener('click', function() {
+            camera.zoom = Math.min(camera.maxZoom, camera.zoom * 1.2);
+            render();
+        });
+        document.getElementById('zoomOut').addEventListener('click', function() {
+            camera.zoom = Math.max(camera.minZoom, camera.zoom / 1.2);
+            render();
+        });
+
+        // ======== ОТМЕНА ========
+        document.getElementById('undoBtn').addEventListener('click', function() {
+            if (undoStack.length === 0) return;
+            const action = undoStack.pop();
+            if (action.type === 'draw') {
+                const idx = strokes.findIndex(function(s) { return s.id === action.data.id; });
+                if (idx > -1) strokes.splice(idx, 1);
+            } else if (action.type === 'erase') {
+                strokes.push(action.data);
+            } else if (action.type === 'marker') {
+                marker = null;
+            } else if (action.type === 'moveMarker') {
+                marker = action.oldMarker;
+            }
+            saveToStorage();
+            render();
+        });
+
+        // ======== СЕТКА ========
+        document.getElementById('gridBtn').addEventListener('click', function() {
+            gridEnabled = !gridEnabled;
+            document.getElementById('gridBtn').style.opacity = gridEnabled ? '1' : '0.5';
+            render();
+        });
+
+        // ======== ТЕЛЕПОРТ К МЕТКЕ ========
+        document.getElementById('teleportBtn').addEventListener('click', function() {
+            if (!marker) return;
+            camera.x = marker.worldX;
+            camera.y = marker.worldY;
+            render();
+        });
+
+        // ======== УДАЛИТЬ МЕТКУ ========
+        document.getElementById('deleteMarkerBtn').addEventListener('click', function() {
+            if (!marker) return;
+            undoStack.push({type: 'marker', data: marker});
+            marker = null;
+            saveToStorage();
+            render();
+        });
+
+        // ======== УДАЛИТЬ МОИ ========
+        const clearModal = document.getElementById('clearModal');
+        const clearBtn = document.getElementById('clearBtn');
+        const modalCancel = document.getElementById('modalCancel');
+        const modalConfirm = document.getElementById('modalConfirm');
+
+        clearBtn.addEventListener('click', function() {
+            clearModal.classList.add('show');
+        });
+        modalCancel.addEventListener('click', function() {
+            clearModal.classList.remove('show');
+        });
+        modalConfirm.addEventListener('click', function() {
+            strokes = strokes.filter(function(s) { return s.userId !== myUserId; });
+            marker = null;
+            undoStack = [];
+            try {
+                localStorage.removeItem('artBoard_' + myUserId);
+            } catch(e) {}
+            clearModal.classList.remove('show');
+            render();
+        });
+
+        // ======== УДАЛИТЬ У ВСЕХ ========
+        const clearAllModal = document.getElementById('clearAllModal');
+        const clearAllBtn = document.getElementById('clearAllBtn');
+        const modalCancelAll = document.getElementById('modalCancelAll');
+        const modalConfirmAll = document.getElementById('modalConfirmAll');
+
+        clearAllBtn.addEventListener('click', function() {
+            clearAllModal.classList.add('show');
+        });
+        modalCancelAll.addEventListener('click', function() {
+            clearAllModal.classList.remove('show');
+        });
+        modalConfirmAll.addEventListener('click', function() {
+            const keysToRemove = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('artBoard_')) {
+                    keysToRemove.push(key);
+                }
+            }
+            keysToRemove.forEach(function(key) {
+                localStorage.removeItem(key);
+            });
+            strokes = [];
+            marker = null;
+            undoStack = [];
+            clearAllModal.classList.remove('show');
+            render();
+        });
+
+        // ======== КНОПКА "НАВЕРХ" ========
+        document.getElementById('scrollTopBtn').addEventListener('click', function() {
+            camera.x = WORLD_SIZE / 2;
+            camera.y = WORLD_SIZE / 2;
+            camera.zoom = 1;
+            render();
+        });
+
+        // ======== ОШИБКА ========
+        let errorTimeout;
+        function showError() {
+            const toast = document.getElementById('errorToast');
+            toast.classList.add('show');
+            clearTimeout(errorTimeout);
+            errorTimeout = setTimeout(function() {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // ======== ПЕРВЫЙ РЕНДЕР ========
+        updateSizePreview();
+        render();
+
+        setInterval(saveToStorage, 2000);
+    </script>
+</body>
+</html>'''
+
+with open('/mnt/agents/output/art_board.html', 'w', encoding='utf-8') as f:
+    f.write(html_code)
+
+print("Файл создан!")
+print(f"Размер: {len(html_code)} символов")
