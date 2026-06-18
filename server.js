@@ -1,4 +1,4 @@
-server_code = '''const WebSocket = require('ws');
+const WebSocket = require('ws');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
