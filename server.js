@@ -11,7 +11,7 @@ let markers = {}; // userId -> marker
 
 const server = http.createServer((req, res) => {
     if (req.url === '/' || req.url === '/index.html') {
-        const htmlPath = path.join(__dirname, 'art_board.html');
+        const htmlPath = path.join(__dirname, 'index.html');
         if (fs.existsSync(htmlPath)) {
             res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
             res.end(fs.readFileSync(htmlPath, 'utf8'));
