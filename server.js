@@ -97,9 +97,4 @@ server.listen(PORT, () => {
     console.log('  Open: http://localhost:' + PORT);
     console.log('========================================');
 });
-'''
-
-with open('/mnt/agents/output/server.js', 'w', encoding='utf-8') as f:
-    f.write(server_code)
-
-print("server.js создан!")
+// ЗДЕСЬ ФАЙЛ ДОЛЖЕН ЗАКОНЧИТЬСЯ. Никаких кавычек ''' и кода Python быть не должно!
