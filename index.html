@@ -1,9 +1,11 @@
+
+# Создаём клиент art_board.html с WebSocket
 html_code = '''<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Бесконечная Арт-Доска</title>
+    <title>Бесконечная Арт-Доска — Мультиплеер</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -282,6 +284,36 @@ html_code = '''<!DOCTYPE html>
             cursor: not-allowed;
         }
 
+        .online-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(30, 30, 30, 0.85);
+            padding: 8px 16px;
+            border-radius: 20px;
+            color: #fff;
+            font-size: 13px;
+            z-index: 100;
+            backdrop-filter: blur(10px);
+        }
+        .online-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse 2s infinite;
+        }
+        .online-dot.offline {
+            background: #ef4444;
+            animation: none;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
         .error-toast {
             position: fixed;
             top: 60px;
@@ -491,6 +523,11 @@ html_code = '''<!DOCTYPE html>
         <canvas id="board"></canvas>
     </div>
 
+    <div class="online-indicator" id="onlineIndicator">
+        <div class="online-dot offline" id="onlineDot"></div>
+        <span id="onlineText">Оффлайн</span>
+    </div>
+
     <div class="toolbar">
         <div class="tool-btn palette-btn" id="paletteBtn" title="Выбрать цвет">&#x1F3A8;</div>
         <div class="tool-btn black active" data-color="#000000" title="Чёрный маркер"></div>
@@ -573,6 +610,81 @@ html_code = '''<!DOCTYPE html>
     </div>
 
     <script>
+        // ======== WEBSOCKET ========
+        const WS_URL = 'ws://' + window.location.host;
+        let ws = null;
+        let isConnected = false;
+
+        function connect() {
+            ws = new WebSocket(WS_URL);
+
+            ws.onopen = function() {
+                isConnected = true;
+                document.getElementById('onlineDot').classList.remove('offline');
+                document.getElementById('onlineText').textContent = 'Онлайн';
+                // Отправляем свой ID
+                ws.send(JSON.stringify({
+                    type: 'join',
+                    userId: myUserId
+                }));
+            };
+
+            ws.onclose = function() {
+                isConnected = false;
+                document.getElementById('onlineDot').classList.add('offline');
+                document.getElementById('onlineText').textContent = 'Оффлайн';
+                // Пробуем переподключиться через 3 секунды
+                setTimeout(connect, 3000);
+            };
+
+            ws.onmessage = function(event) {
+                const msg = JSON.parse(event.data);
+
+                if (msg.type === 'init') {
+                    // Получаем начальное состояние
+                    strokes = msg.strokes || [];
+                    if (msg.markers) {
+                        Object.keys(msg.markers).forEach(function(uid) {
+                            if (uid !== myUserId) {
+                                otherMarkers[uid] = msg.markers[uid];
+                            }
+                        });
+                    }
+                    render();
+                }
+
+                else if (msg.type === 'draw') {
+                    strokes.push(msg.stroke);
+                    render();
+                }
+
+                else if (msg.type === 'erase') {
+                    strokes = strokes.filter(function(s) { return s.id !== msg.strokeId; });
+                    render();
+                }
+
+                else if (msg.type === 'marker') {
+                    if (msg.userId !== myUserId) {
+                        otherMarkers[msg.userId] = msg.marker;
+                        render();
+                    }
+                }
+
+                else if (msg.type === 'clear') {
+                    strokes = strokes.filter(function(s) { return s.userId !== msg.userId; });
+                    delete otherMarkers[msg.userId];
+                    render();
+                }
+
+                else if (msg.type === 'clearAll') {
+                    strokes = [];
+                    otherMarkers = {};
+                    render();
+                }
+            };
+        }
+
+        // ======== КАНВАС ========
         const canvas = document.getElementById('board');
         const ctx = canvas.getContext('2d');
         const container = document.getElementById('canvas-container');
@@ -586,11 +698,7 @@ html_code = '''<!DOCTYPE html>
             maxZoom: 5
         };
 
-        let myUserId = localStorage.getItem('artBoard_userId');
-        if (!myUserId) {
-            myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
-            localStorage.setItem('artBoard_userId', myUserId);
-        }
+        let myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
 
         let currentTool = 'pen';
         let currentColor = '#000000';
@@ -606,65 +714,9 @@ html_code = '''<!DOCTYPE html>
         let strokes = [];
         let currentStroke = null;
         let marker = null;
+        let otherMarkers = {}; // маркеры других пользователей
         let undoStack = [];
         let gridEnabled = true;
-
-        function saveToStorage() {
-            try {
-                const myStrokes = strokes.filter(function(s) { return s.userId === myUserId; });
-                const data = {
-                    strokes: myStrokes,
-                    marker: marker,
-                    camera: {x: camera.x, y: camera.y, zoom: camera.zoom},
-                    penSize: penSize,
-                    eraserSize: eraserSize,
-                    currentColor: currentColor
-                };
-                localStorage.setItem('artBoard_' + myUserId, JSON.stringify(data));
-            } catch(e) {}
-        }
-
-        function loadFromStorage() {
-            try {
-                const saved = localStorage.getItem('artBoard_' + myUserId);
-                if (saved) {
-                    const data = JSON.parse(saved);
-                    if (data.strokes) {
-                        data.strokes.forEach(function(s) {
-                            strokes.push(s);
-                        });
-                    }
-                    if (data.marker) marker = data.marker;
-                    if (data.camera) {
-                        camera.x = data.camera.x;
-                        camera.y = data.camera.y;
-                        camera.zoom = data.camera.zoom;
-                    }
-                    if (data.penSize) penSize = data.penSize;
-                    if (data.eraserSize) eraserSize = data.eraserSize;
-                    if (data.currentColor) currentColor = data.currentColor;
-                    return true;
-                }
-            } catch(e) {}
-            return false;
-        }
-
-        function loadOtherUsersArt() {
-            try {
-                for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key && key.startsWith('artBoard_') && key !== 'artBoard_' + myUserId && key !== 'artBoard_userId') {
-                        const data = JSON.parse(localStorage.getItem(key));
-                        if (data && data.strokes) {
-                            data.strokes.forEach(function(s) {
-                                const exists = strokes.some(function(ex) { return ex.id === s.id; });
-                                if (!exists) strokes.push(s);
-                            });
-                        }
-                    }
-                }
-            } catch(e) {}
-        }
 
         function resize() {
             canvas.width = window.innerWidth;
@@ -674,8 +726,8 @@ html_code = '''<!DOCTYPE html>
         window.addEventListener('resize', resize);
         resize();
 
-        loadFromStorage();
-        loadOtherUsersArt();
+        // Подключаемся к серверу
+        connect();
 
         function screenToWorld(sx, sy) {
             return {
@@ -728,7 +780,7 @@ html_code = '''<!DOCTYPE html>
                 ctx.stroke();
             }
 
-            updateMarker();
+            updateMarkers();
         }
 
         function drawGrid() {
@@ -751,14 +803,23 @@ html_code = '''<!DOCTYPE html>
             }
         }
 
-        function updateMarker() {
+        function updateMarkers() {
             document.querySelectorAll('.marker, .marker-indicator').forEach(el => el.remove());
-            if (!marker) return;
 
-            const screen = worldToScreen(marker.worldX, marker.worldY);
+            // Мой маркер
+            if (marker) drawMarker(marker, true);
+
+            // Маркеры других
+            Object.keys(otherMarkers).forEach(function(uid) {
+                drawMarker(otherMarkers[uid], false);
+            });
+        }
+
+        function drawMarker(mrk, isMine) {
+            const screen = worldToScreen(mrk.worldX, mrk.worldY);
             const dist = Math.sqrt(
-                Math.pow(marker.worldX - camera.x, 2) +
-                Math.pow(marker.worldY - camera.y, 2)
+                Math.pow(mrk.worldX - camera.x, 2) +
+                Math.pow(mrk.worldY - camera.y, 2)
             );
             let distText;
             if (dist < 1000) {
@@ -773,12 +834,17 @@ html_code = '''<!DOCTYPE html>
                 el.className = 'marker';
                 el.style.left = screen.x + 'px';
                 el.style.top = screen.y + 'px';
-                el.innerHTML = '<div class="marker-body"></div><div class="marker-distance">' + distText + '</div>';
+                if (!isMine) {
+                    el.querySelector = function() {};
+                    el.innerHTML = '<div class="marker-body" style="background:#3b82f6;"></div><div class="marker-distance">' + distText + '</div>';
+                } else {
+                    el.innerHTML = '<div class="marker-body"></div><div class="marker-distance">' + distText + '</div>';
+                }
                 container.appendChild(el);
             } else {
                 const indicator = document.createElement('div');
                 indicator.className = 'marker-indicator';
-                const angle = Math.atan2(marker.worldY - camera.y, marker.worldX - camera.x);
+                const angle = Math.atan2(mrk.worldY - camera.y, mrk.worldX - camera.x);
                 const margin = 30;
                 let ix, iy;
                 const tan = Math.tan(angle);
@@ -797,7 +863,8 @@ html_code = '''<!DOCTYPE html>
                 indicator.style.top = (iy - 20) + 'px';
                 indicator.style.display = 'block';
                 const arrowAngle = angle * 180 / Math.PI - 90;
-                indicator.innerHTML = '<div class="arrow" style="transform: translate(-50%, -50%) rotate(' + arrowAngle + 'deg);"></div><div class="dist">' + distText + '</div>';
+                const color = isMine ? '#f59e0b' : '#3b82f6';
+                indicator.innerHTML = '<div class="arrow" style="transform: translate(-50%, -50%) rotate(' + arrowAngle + 'deg); border-bottom-color:' + color + ';"></div><div class="dist">' + distText + '</div>';
                 container.appendChild(indicator);
             }
         }
@@ -868,7 +935,14 @@ html_code = '''<!DOCTYPE html>
                     worldX: world.x, worldY: world.y
                 };
                 undoStack.push({type: 'marker', data: marker});
-                saveToStorage();
+                // Отправляем на сервер
+                if (isConnected && ws) {
+                    ws.send(JSON.stringify({
+                        type: 'marker',
+                        userId: myUserId,
+                        marker: marker
+                    }));
+                }
                 render();
                 return;
             }
@@ -914,7 +988,13 @@ html_code = '''<!DOCTYPE html>
                 if (currentStroke.points.length > 1) {
                     strokes.push(currentStroke);
                     undoStack.push({type: 'draw', data: currentStroke});
-                    saveToStorage();
+                    // Отправляем на сервер
+                    if (isConnected && ws) {
+                        ws.send(JSON.stringify({
+                            type: 'draw',
+                            stroke: currentStroke
+                        }));
+                    }
                 }
                 currentStroke = null;
                 isDrawing = false;
@@ -923,7 +1003,6 @@ html_code = '''<!DOCTYPE html>
             if (isPanning) {
                 isPanning = false;
                 container.classList.remove('panning');
-                saveToStorage();
             }
         });
 
@@ -932,7 +1011,12 @@ html_code = '''<!DOCTYPE html>
                 if (currentStroke.points.length > 1) {
                     strokes.push(currentStroke);
                     undoStack.push({type: 'draw', data: currentStroke});
-                    saveToStorage();
+                    if (isConnected && ws) {
+                        ws.send(JSON.stringify({
+                            type: 'draw',
+                            stroke: currentStroke
+                        }));
+                    }
                 }
                 currentStroke = null;
                 isDrawing = false;
@@ -965,18 +1049,17 @@ html_code = '''<!DOCTYPE html>
 
         canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
 
-        // ======== ЛАСТИК — ИСПРАВЛЕННЫЙ ========
+        // ======== ЛАСТИК ========
         function eraseAt(sx, sy) {
-            const radius = eraserSize * camera.zoom; // масштабируем радиус под зум
+            const radius = eraserSize * camera.zoom;
             let hitForeign = false;
             let changed = false;
             const newStrokes = [];
-            const removedStrokes = [];
+            const removedIds = [];
 
             for (let s = 0; s < strokes.length; s++) {
                 const stroke = strokes[s];
 
-                // Чужие линии — просто проверяем попадание, но не трогаем
                 if (stroke.userId !== myUserId) {
                     const dist = distanceToStroke(sx, sy, stroke);
                     if (dist < radius) {
@@ -986,7 +1069,6 @@ html_code = '''<!DOCTYPE html>
                     continue;
                 }
 
-                // Мои линии — стираем точки в радиусе
                 let segments = [];
                 let currentSeg = [];
                 let wasErased = false;
@@ -997,55 +1079,53 @@ html_code = '''<!DOCTYPE html>
                     if (dist > radius) {
                         currentSeg.push(stroke.points[i]);
                     } else {
-                        // Точка в зоне ластика — разрываем
                         if (currentSeg.length > 1) {
                             segments.push(currentSeg);
-                        } else if (currentSeg.length === 1) {
-                            // Одиночная точка — теряем
                         }
                         currentSeg = [];
                         wasErased = true;
                     }
                 }
-                // Добавляем последний сегмент
                 if (currentSeg.length > 1) {
                     segments.push(currentSeg);
                 }
 
                 if (wasErased) {
                     changed = true;
-                    removedStrokes.push(stroke);
-                    // Создаём новые stroke из каждого сегмента
+                    removedIds.push(stroke.id);
+                    undoStack.push({type: 'erase', data: stroke});
                     segments.forEach(function(seg) {
                         if (seg.length >= 2) {
-                            newStrokes.push({
+                            const newStroke = {
                                 id: 'stroke_' + Date.now() + '_' + Math.random(),
                                 userId: myUserId,
                                 points: seg,
                                 color: stroke.color,
                                 size: stroke.size,
                                 timestamp: Date.now()
-                            });
+                            };
+                            newStrokes.push(newStroke);
                         }
                     });
                 } else {
-                    // Ничего не стёрли — оставляем как есть
                     newStrokes.push(stroke);
                 }
             }
 
-            // Если были изменения — обновляем массив и сохраняем
             if (changed) {
                 strokes = newStrokes;
-                // Добавляем в undo удалённые оригиналы
-                removedStrokes.forEach(function(rs) {
-                    undoStack.push({type: 'erase', data: rs});
-                });
-                saveToStorage();
+                // Отправляем удаления на сервер
+                if (isConnected && ws) {
+                    removedIds.forEach(function(id) {
+                        ws.send(JSON.stringify({
+                            type: 'erase',
+                            strokeId: id
+                        }));
+                    });
+                }
                 render();
             }
 
-            // Если попали в чужое, но ничего своего не стёрли — показываем ошибку
             if (hitForeign && !changed) {
                 showError();
             }
@@ -1059,7 +1139,6 @@ html_code = '''<!DOCTYPE html>
                 currentTool = 'pen';
                 currentColor = btn.dataset.color;
                 updateSizePreview();
-                saveToStorage();
             });
         });
 
@@ -1141,7 +1220,6 @@ html_code = '''<!DOCTYPE html>
             document.querySelectorAll('.tool-btn').forEach(function(b) { b.classList.remove('active'); });
             document.querySelector('.tool-btn.palette-btn').classList.add('active');
             currentTool = 'pen';
-            saveToStorage();
         });
 
         colorWheel.addEventListener('mousedown', function(e) {
@@ -1166,7 +1244,6 @@ html_code = '''<!DOCTYPE html>
                 penSize = val;
             }
             updateSizePreview();
-            saveToStorage();
         });
         function updateSizePreview() {
             const val = currentTool === 'eraser' ? eraserSize : penSize;
@@ -1194,15 +1271,42 @@ html_code = '''<!DOCTYPE html>
             const action = undoStack.pop();
             if (action.type === 'draw') {
                 const idx = strokes.findIndex(function(s) { return s.id === action.data.id; });
-                if (idx > -1) strokes.splice(idx, 1);
+                if (idx > -1) {
+                    const removed = strokes.splice(idx, 1)[0];
+                    if (isConnected && ws) {
+                        ws.send(JSON.stringify({
+                            type: 'erase',
+                            strokeId: removed.id
+                        }));
+                    }
+                }
             } else if (action.type === 'erase') {
                 strokes.push(action.data);
+                if (isConnected && ws) {
+                    ws.send(JSON.stringify({
+                        type: 'draw',
+                        stroke: action.data
+                    }));
+                }
             } else if (action.type === 'marker') {
                 marker = null;
+                if (isConnected && ws) {
+                    ws.send(JSON.stringify({
+                        type: 'marker',
+                        userId: myUserId,
+                        marker: null
+                    }));
+                }
             } else if (action.type === 'moveMarker') {
                 marker = action.oldMarker;
+                if (isConnected && ws) {
+                    ws.send(JSON.stringify({
+                        type: 'marker',
+                        userId: myUserId,
+                        marker: marker
+                    }));
+                }
             }
-            saveToStorage();
             render();
         });
 
@@ -1226,7 +1330,13 @@ html_code = '''<!DOCTYPE html>
             if (!marker) return;
             undoStack.push({type: 'marker', data: marker});
             marker = null;
-            saveToStorage();
+            if (isConnected && ws) {
+                ws.send(JSON.stringify({
+                    type: 'marker',
+                    userId: myUserId,
+                    marker: null
+                }));
+            }
             render();
         });
 
@@ -1246,9 +1356,12 @@ html_code = '''<!DOCTYPE html>
             strokes = strokes.filter(function(s) { return s.userId !== myUserId; });
             marker = null;
             undoStack = [];
-            try {
-                localStorage.removeItem('artBoard_' + myUserId);
-            } catch(e) {}
+            if (isConnected && ws) {
+                ws.send(JSON.stringify({
+                    type: 'clear',
+                    userId: myUserId
+                }));
+            }
             clearModal.classList.remove('show');
             render();
         });
@@ -1266,19 +1379,13 @@ html_code = '''<!DOCTYPE html>
             clearAllModal.classList.remove('show');
         });
         modalConfirmAll.addEventListener('click', function() {
-            const keysToRemove = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith('artBoard_')) {
-                    keysToRemove.push(key);
-                }
-            }
-            keysToRemove.forEach(function(key) {
-                localStorage.removeItem(key);
-            });
             strokes = [];
+            otherMarkers = {};
             marker = null;
             undoStack = [];
+            if (isConnected && ws) {
+                ws.send(JSON.stringify({ type: 'clearAll' }));
+            }
             clearAllModal.classList.remove('show');
             render();
         });
@@ -1305,8 +1412,6 @@ html_code = '''<!DOCTYPE html>
         // ======== ПЕРВЫЙ РЕНДЕР ========
         updateSizePreview();
         render();
-
-        setInterval(saveToStorage, 2000);
     </script>
 </body>
 </html>'''
@@ -1314,5 +1419,5 @@ html_code = '''<!DOCTYPE html>
 with open('/mnt/agents/output/art_board.html', 'w', encoding='utf-8') as f:
     f.write(html_code)
 
-print("Файл создан!")
+print("art_board.html создан!")
 print(f"Размер: {len(html_code)} символов")
